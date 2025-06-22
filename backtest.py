@@ -37,33 +37,43 @@ def run_backtest(df, initial_balance=None):
 
             # Simulate trade outcome on the bar *after* the signal (bar i)
             trade_bar = df.iloc[i]
-            pnl_pips = 0
-            
+            pnl_amount = 0
+            exit_price = 0
+
+            # --- BUY ---
             if signal == 'buy':
-                # Check for stop loss first
+                # First, check if the low of the bar hits the stop loss
                 if trade_bar['low'] <= sl:
-                    pnl_pips = -sl_pips
-                # Then check for take profit
+                    exit_price = sl
+                # Next, check if the high hits the take profit
                 elif trade_bar['high'] >= tp:
-                    pnl_pips = tp_pips
-                # Otherwise, close at the end of the bar
+                    exit_price = tp
+                # Otherwise, the trade is closed at the end of the bar
                 else:
-                    pnl_pips = (trade_bar['close'] - entry_price) / pip_size
-            
+                    exit_price = trade_bar['close']
+                
+                pnl_pips = (exit_price - entry_price) / pip_size
+                pnl_amount = pnl_pips * lot * 10  # Assuming pip_value_per_lot is 10
+
+            # --- SELL ---
             elif signal == 'sell':
-                # Check for stop loss first
+                # First, check if the high of the bar hits the stop loss
                 if trade_bar['high'] >= sl:
-                    pnl_pips = -sl_pips
-                # Then check for take profit
+                    exit_price = sl
+                # Next, check if the low hits the take profit
                 elif trade_bar['low'] <= tp:
-                    pnl_pips = tp_pips
-                # Otherwise, close at the end of the bar
+                    exit_price = tp
+                # Otherwise, the trade is closed at the end of the bar
                 else:
-                    pnl_pips = (entry_price - trade_bar['close']) / pip_size
+                    exit_price = trade_bar['close']
+                
+                pnl_pips = (entry_price - exit_price) / pip_size
+                pnl_amount = pnl_pips * lot * 10  # Assuming pip_value_per_lot is 10
             
+            # Add logging to debug PnL for each trade
+            logger.info(f"TRADE: {signal.upper()} | Entry: {entry_price:.5f}, Exit: {exit_price:.5f}, PnL: ${pnl_amount:.2f}")
+
             # PnL in account currency
-            pip_value_per_lot = 10 
-            pnl_amount = pnl_pips * lot * pip_value_per_lot
             balance += pnl_amount
             positions.append({'time': entry_time, 'signal': signal, 'price': entry_price, 'lot': lot, 'pnl': pnl_amount, 'balance': balance})
             
