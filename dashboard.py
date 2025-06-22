@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 # --- Page Configuration ---
+# Forcing a cache clear by adding a comment
 st.set_page_config(
     page_title="Forex Bot Performance Dashboard",
     page_icon="🤖",
