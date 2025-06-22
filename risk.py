@@ -1,25 +1,36 @@
-from config import RISK_PER_TRADE, TRADE_PERCENTAGE, ATR_SL_MULTIPLIER, REWARD_RISK_RATIO
+from config import (
+    USE_FIXED_LOT_SIZE,
+    LOT_SIZE,
+    RISK_PER_TRADE,
+    ATR_SL_MULTIPLIER,
+    REWARD_RISK_RATIO
+)
 
-def calculate_position_size(balance, stop_loss_pips):
-    """Calculates position size based on account balance and stop-loss in pips."""
-    # Risk per trade in account currency
-    risk_amount = balance * RISK_PER_TRADE
-    
-    # Value per pip (for a standard lot of a 5-digit broker, e.g., EURUSD)
-    # This might need to be adjusted or made dynamic based on the symbol
-    pip_value_per_lot = 10
-    
+def calculate_lot_size(balance, stop_loss_pips):
+    """
+    Calculates the trade volume (lot size) based on the chosen method in config.py.
+    """
+    if USE_FIXED_LOT_SIZE:
+        return LOT_SIZE
+
+    # --- Dynamic Lot Size Calculation ---
     if stop_loss_pips <= 0:
-        return 0.01 # Return minimum lot size if SL is zero to avoid division by zero
+        # Avoid division by zero and invalid trades
+        return 0.01  # Default to minimum lot size as a fallback
 
-    # Calculate lot size
-    lots = risk_amount / (stop_loss_pips * pip_value_per_lot)
+    # Risk amount in account currency (e.g., USD)
+    risk_amount = balance * RISK_PER_TRADE
 
-    # Ensure it doesn't exceed the max allowed trade percentage (a secondary check)
-    # This part of the logic may need refinement based on margin requirements
-    # For now, we'll keep the primary calculation based on risk per trade.
-    
-    return max(round(lots, 2), 0.01) # Return at least the minimum lot size
+    # This is a simplification. For a multi-currency portfolio, this needs to be
+    # dynamic based on the quote currency of the pair.
+    # For major USD-quoted pairs (EURUSD, GBPUSD), this is ~$10 per standard lot.
+    value_per_pip_per_lot = 10.0
+
+    # Calculate required lot size to match the risk amount
+    calculated_lots = risk_amount / (stop_loss_pips * value_per_pip_per_lot)
+
+    # Return the calculated lot size, rounded to 2 decimal places, but not less than 0.01
+    return max(0.01, round(calculated_lots, 2))
 
 
 def get_sl_tp(price, direction, atr):

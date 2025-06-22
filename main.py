@@ -1,6 +1,6 @@
 from broker import connect, disconnect, get_account_info, get_historical_data, place_order
 from strategy import generate_signal
-from risk import calculate_position_size, get_sl_tp
+from risk import calculate_lot_size, get_sl_tp
 from utils import setup_logger
 from config import SYMBOLS, TIMEFRAME, ATR_SL_MULTIPLIER, BACKTEST, INITIAL_BALANCE
 from backtest import run_backtest
@@ -39,7 +39,7 @@ def live_trading():
             sl_pips = (atr * ATR_SL_MULTIPLIER) / pip_size
 
             price = df.iloc[-1]['close']
-            lot = calculate_position_size(balance, sl_pips)
+            lot = calculate_lot_size(balance, sl_pips)
             sl, tp = get_sl_tp(price, signal, atr)
             
             if lot > 0.0 and sl is not None:

@@ -1,6 +1,7 @@
 import MetaTrader5 as mt5
 from config import ACCOUNT_LOGIN, ACCOUNT_PASSWORD, SERVER
 from utils import setup_logger
+from notifier import send_telegram
 
 logger = setup_logger('broker')
 
@@ -60,7 +61,13 @@ def place_order(symbol, direction, lot, sl, tp):
     result = mt5.order_send(request)
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         logger.error(f"Order failed: {result.comment}")
+        send_telegram(
+            f"❌ Trade FAILED:\nSymbol: {symbol}\nDirection: {direction}\nLot: {lot}\nEntry: {price:.5f}\nSL: {sl:.5f}\nTP: {tp:.5f}\nError: {result.comment}"
+        )
         return False
     logger.info(f"Order placed: {direction} {lot} lots at {price}")
+    send_telegram(
+        f"✅ Trade executed:\nSymbol: {symbol}\nDirection: {direction}\nLot: {lot}\nEntry: {price:.5f}\nSL: {sl:.5f}\nTP: {tp:.5f}"
+    )
     return True
 # NOTE: Pip value is hardcoded for EURUSD ($10 per lot per pip). For other symbols, adjust risk.py accordingly. 
