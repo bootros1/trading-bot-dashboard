@@ -7,8 +7,8 @@ from config import ACCOUNT_LOGIN, ACCOUNT_PASSWORD, SERVER
 
 # User settings
 SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY']  # Add more symbols as needed
-TIMEFRAMES = ['M15', 'H1']  # Add more timeframes as needed
-BARS = 500  # Number of bars to fetch
+TIMEFRAMES = ['D1', 'H1', 'M15']  # Add more timeframes as needed
+BARS = 1000  # Number of bars to fetch
 INTERVAL_MINUTES = 0  # Set >0 to run in a loop every N minutes, or 0 for one-time fetch
 
 # Path to MT5 terminal (update if your MT5 is installed elsewhere)
@@ -26,23 +26,13 @@ def print_diagnostics():
     print("MetaTrader5 version:", mt5.version())
 
 def try_initialize():
-    print("Trying mt5.initialize() with no arguments...")
+    print("Trying to connect to the running MT5 terminal...")
     if mt5.initialize():
-        print("Connected to running terminal (no credentials).")
+        print("✅ Connected to running terminal (no credentials).")
         return True
-    print("Failed. Error:", mt5.last_error())
-    print("Trying mt5.initialize() with credentials...")
-    if mt5.initialize(login=ACCOUNT_LOGIN, password=ACCOUNT_PASSWORD, server=SERVER):
-        print("Connected using credentials.")
-        return True
-    print("Failed. Error:", mt5.last_error())
-    for path in MT5_PATHS:
-        print(f"Trying mt5.initialize(path='{path}') with credentials...")
-        if mt5.initialize(path=path, login=ACCOUNT_LOGIN, password=ACCOUNT_PASSWORD, server=SERVER):
-            print(f"Connected using credentials and path: {path}")
-            return True
-        print("Failed. Error:", mt5.last_error())
+    print("❌ Failed. Error:", mt5.last_error())
     return False
+
 
 def _get_mt5_timeframe(timeframe_str):
     try:
