@@ -29,6 +29,7 @@ TIMEFRAME = 'D1' # M1, M5, M15, M30, H1, H4, D1, W1, MN1
 # --- Risk Management ---
 RISK_PER_TRADE = 0.01 # 1% of account balance
 ATR_PERIOD = 14 # Period for ATR calculation
+REWARD_RISK_RATIO = 1.5 # The ratio of reward to risk for setting take profit
 ATR_SL_MULTIPLIER = 2.0 # Stop loss distance in multiples of ATR
 
 # --- Backtest Settings ---
