@@ -24,16 +24,17 @@ MANIFEST
 
 # Logs and databases
 *.log
-*.db
-*.sqlite3
+# *.db
+# *.sqlite3
 logs/
-!logs/.gitkeep
+!logs/backtest_results.csv
 
 # Local config files - IMPORTANT!
-config.py
+# config.py
 
 # Historical data files
 *.csv
+!backtest_results.csv
 
 # Environment directories
 .env
