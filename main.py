@@ -1,6 +1,9 @@
 import os
 import sys
 
+# Add current directory to Python path for local imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 LOCK_FILE = 'bot.lock'
 
 # Atomic lock: prevent multiple instances
