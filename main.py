@@ -1,14 +1,38 @@
+# import logging
+# from logging.handlers import RotatingFileHandler
+# import os
+
+# # Ensure logs directory exists
+# if not os.path.exists("logs"):
+#     os.makedirs("logs")
+
+# # Set up logging
+# logger = logging.getLogger("forex_bot")
+# logger.setLevel(logging.INFO)  # Or DEBUG for more detail
+
+# handler = RotatingFileHandler("logs/bot.log", maxBytes=1_000_000, backupCount=5)
+# formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+# handler.setFormatter(formatter)
+# logger.addHandler(handler)
+# import sys
+#raise Exception("Test error for Telegram alert")
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from broker import connect, disconnect, get_account_info, get_historical_data, place_order
 from strategy import generate_signal
 from risk import calculate_lot_size, get_sl_tp
-from utils import setup_logger
+from utils import setup_logger, log_trade
 from config import SYMBOLS, TIMEFRAME, ATR_SL_MULTIPLIER, BACKTEST, INITIAL_BALANCE
 from backtest import run_backtest
 import pandas as pd
+from datetime import datetime
+from notifier import send_telegram
 
 logger = setup_logger('main')
 
 def live_trading():
+    print("Live trading started")  # Add this line
     """Scans multiple symbols and executes a trade on the first valid signal."""
     if not connect():
         return
@@ -44,11 +68,29 @@ def live_trading():
             
             if lot > 0.0 and sl is not None:
                 success = place_order(symbol, signal, lot, sl, tp)
+                trade_data = {
+                    'timestamp': datetime.now().isoformat(),
+                    'symbol': symbol,
+                    'direction': signal,
+                    'lot': lot,
+                    'entry': price,
+                    'sl': sl,
+                    'tp': tp,
+                    'result': 'executed' if success else 'failed',
+                    'error': '' if success else 'Order failed'
+                }
+                log_trade(trade_data)
                 if success:
+                    send_telegram(
+                        f"✅ Trade executed:\nSymbol: {symbol}\nDirection: {signal}\nLot: {lot}\nEntry: {price}\nSL: {sl}\nTP: {tp}"
+                    )
                     logger.info(f"Trade executed for {symbol}: {signal} {lot} lots at {price}, SL: {sl:.5f}, TP: {tp:.5f}")
                     trade_executed = True
                     break  # Stop scanning after one successful trade
                 else:
+                    send_telegram(
+                        f"❌ Trade FAILED:\nSymbol: {symbol}\nDirection: {signal}\nLot: {lot}\nEntry: {price}\nSL: {sl}\nTP: {tp}\nError: Order failed"
+                    )
                     logger.error(f"Failed to place order for {symbol}. Will continue scanning.")
             else:
                 logger.warning(f"Could not calculate valid lot size or SL/TP for {symbol}. Skipping trade.")
@@ -109,4 +151,11 @@ def main():
         live_trading()
 
 if __name__ == '__main__':
-    main() 
+    try:
+        main()
+    except Exception as e:
+        logger.exception("Critical error occurred")
+        import traceback
+        tb = traceback.format_exc()
+        from notifier import send_telegram
+        send_telegram(f"❌ ERROR: {str(e)}\n\n{tb[-1000:]}")
