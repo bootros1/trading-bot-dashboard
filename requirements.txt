@@ -1,4 +1,6 @@
+MetaTrader5
 pandas
 numpy
-streamlit
-plotly 
+oandapyV20
+krakenex
+ccxt 

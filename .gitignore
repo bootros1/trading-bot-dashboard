@@ -1,9 +1,15 @@
-# Byte-compiled / optimized / DLL files
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Distribution / packaging
+*.so
 .Python
 build/
 develop-eggs/
@@ -22,28 +28,28 @@ wheels/
 *.egg
 MANIFEST
 
-# Logs and databases
-*.log
-# *.db
-# *.sqlite3
-!logs/backtest_results.csv
-
-# Local config files - IMPORTANT!
-# config.py
-
-# Historical data files
-*.csv
-!backtest_results.csv
-
-# Environment directories
-.env
-.venv
-env/
+# Virtual environments
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
 
-# IDE settings
-.idea/
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Trading bot specific
+bot.lock
+*.lock
+
+# API keys and secrets (backup)
+*.key
+*.secret

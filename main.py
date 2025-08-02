@@ -1,33 +1,46 @@
 import os
 import sys
-
-# Add current directory to Python path for local imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-LOCK_FILE = 'bot.lock'
-
-# Atomic lock: prevent multiple instances
-if os.path.exists(LOCK_FILE):
-    print('Another instance of the bot is already running. Exiting.')
-    sys.exit(1)
-
-with open(LOCK_FILE, 'w') as f:
-    f.write('locked')
-
 import atexit
+import signal
+from datetime import datetime
+
+# Create a lock file to prevent multiple instances
+LOCK_FILE = 'trading_bot.lock'
+
+def create_lock():
+    """Create a lock file to prevent multiple instances."""
+    if os.path.exists(LOCK_FILE):
+        print("Trading bot is already running!")
+        sys.exit(1)
+    with open(LOCK_FILE, 'w') as f:
+        f.write(str(os.getpid()))
 
 def remove_lock():
+    """Remove the lock file."""
     if os.path.exists(LOCK_FILE):
         os.remove(LOCK_FILE)
 
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully."""
+    print("\nShutting down trading bot...")
+    remove_lock()
+    sys.exit(0)
+
+# Set up signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# Create lock file
+create_lock()
 atexit.register(remove_lock)
 
 try:
-    from broker import connect, disconnect, get_account_info, get_historical_data, place_order
+    # Import unified trader interface
+    from trader_interface import MultiTrader, TraderFactory
     from strategy import generate_signal
-    from risk import calculate_lot_size, get_sl_tp
+    from risk import calculate_units, get_sl_tp
     from utils import setup_logger, log_trade
-    from config import SYMBOLS, TIMEFRAME, ATR_SL_MULTIPLIER, BACKTEST, INITIAL_BALANCE
+    from config import BROKER, TIMEFRAME, ATR_SL_MULTIPLIER, BACKTEST, INITIAL_BALANCE, get_symbols
     from backtest import run_backtest
     import pandas as pd
     from datetime import datetime
@@ -35,23 +48,30 @@ try:
     logger = setup_logger('main')
 
     def live_trading():
-        """Scans multiple symbols and executes a trade on the first valid signal."""
-        if not connect():
+        """Scans multiple symbols and executes a trade on the first valid signal using unified trader."""
+        # Create multi-trader with selected broker
+        multi_trader = MultiTrader(primary_broker=BROKER)
+        
+        # Add the selected broker
+        if not multi_trader.add_broker(BROKER):
+            logger.error(f"Failed to connect to {BROKER}")
             return
 
-        info = get_account_info()
+        info = multi_trader.get_account_info()
         if info is None:
-            disconnect()
+            logger.error(f"Failed to get account info from {BROKER}")
+            multi_trader.disconnect_all()
             return
         
-        balance = info.balance
+        balance = info['balance']
         trade_executed = False
+        symbols = get_symbols()
 
-        logger.info(f"Scanning {len(SYMBOLS)} symbols for a signal...")
+        logger.info(f"Scanning {len(symbols)} symbols for a signal using {BROKER}...")
 
-        for symbol in SYMBOLS:
+        for symbol in symbols:
             logger.info(f"--- Analyzing {symbol} ---")
-            df = get_historical_data(symbol, TIMEFRAME, bars=100)
+            df = multi_trader.get_historical_data(symbol, TIMEFRAME, bars=100)
             if df is None or df.empty:
                 logger.warning(f"Could not get historical data for {symbol}. Skipping.")
                 continue
@@ -65,92 +85,78 @@ try:
                 sl_pips = (atr * ATR_SL_MULTIPLIER) / pip_size
 
                 price = df.iloc[-1]['close']
-                lot = calculate_lot_size(balance, sl_pips)
+                # Calculate units instead of lot size for OANDA
+                units = calculate_units(balance, sl_pips)
                 sl, tp = get_sl_tp(price, signal, atr)
                 
-                if lot > 0.0 and sl is not None:
-                    success = place_order(symbol, signal, lot, sl, tp)
+                if units > 0 and sl is not None:
+                    # For Kraken, use amount directly; for OANDA, convert to lot size
+                    if BROKER.upper() == "KRAKEN":
+                        amount = units / 100000.0  # Convert to smaller amount for crypto
+                    else:
+                        amount = units / 100000.0  # Convert to lot size for OANDA
+                    
+                    success = multi_trader.place_order(symbol, signal, amount, sl, tp)
                     if success:
-                        logger.info(f"Trade executed for {symbol}: {signal} {lot} lots at {price}, SL: {sl:.5f}, TP: {tp:.5f}")
+                        logger.info(f"Trade executed for {symbol}: {signal} {units} units at {price}, SL: {sl:.5f}, TP: {tp:.5f}")
                         trade_executed = True
                         trade_data = {
                             'timestamp': datetime.now().isoformat(),
                             'symbol': symbol,
                             'direction': signal,
-                            'lot': lot,
+                            'units': units,
                             'entry': price,
                             'sl': sl,
                             'tp': tp,
                             'result': 'executed',
                             'error': '',
                             'pnl': 0,  # Placeholder for now
-                            'balance': balance  # Current balance after trade
+                            'balance': balance,
+                            'broker': BROKER
                         }
                         log_trade(trade_data)
                         break  # Stop scanning after one successful trade
                     else:
                         logger.error(f"Failed to place order for {symbol}. Will continue scanning.")
                 else:
-                    logger.warning(f"Could not calculate valid lot size or SL/TP for {symbol}. Skipping trade.")
+                    logger.warning(f"Could not calculate valid units or SL/TP for {symbol}. Skipping trade.")
             else:
                 logger.info(f"No signal for {symbol}.")
 
         if not trade_executed:
             logger.info("Scan complete. No valid trading signals found on any symbol today.")
 
-        disconnect()
-
-    def run_full_backtest():
-        """
-        Runs a backtest across all symbols defined in the config and combines the results.
-        """
-        logger.info("--- Starting Full Multi-Symbol Backtest ---")
-        all_results = []
-        
-        for symbol in SYMBOLS:
-            file_path = f'historical_{symbol}_{TIMEFRAME}.csv'
-            logger.info(f"Loading data for {symbol} from {file_path}...")
-            
-            try:
-                df = pd.read_csv(file_path)
-                if df.empty:
-                    logger.warning(f"Data file for {symbol} is empty. Skipping.")
-                    continue
-            except FileNotFoundError:
-                logger.warning(f"Historical data file not found for {symbol} at {file_path}. Skipping.")
-                continue
-            
-            # We need to add the symbol to the results to differentiate trades
-            symbol_results = run_backtest(df, initial_balance=INITIAL_BALANCE)
-            if not symbol_results.empty:
-                symbol_results['symbol'] = symbol
-                all_results.append(symbol_results)
-
-        if not all_results:
-            logger.error("No trades were generated across any symbols. Backtest results file will be empty.")
-            # Create an empty file with headers so the dashboard doesn't error out on file-not-found
-            pd.DataFrame(columns=['signal', 'price', 'lot', 'pnl', 'balance', 'symbol']).to_csv('logs/backtest_results.csv', index=False)
-            return
-
-        # Combine all results and sort by the trade execution order (index)
-        final_results = pd.concat(all_results).sort_index().reset_index(drop=True)
-        
-        # Recalculate the balance column to be cumulative across all trades
-        final_results['balance'] = INITIAL_BALANCE + final_results['pnl'].cumsum()
-
-        final_results.to_csv('logs/backtest_results.csv', index=False)
-        logger.info(f"--- Full Backtest Complete ---")
-        logger.info(f"Results for {len(final_results)} trades across {len(SYMBOLS)} symbols saved to logs/backtest_results.csv")
+        multi_trader.disconnect_all()
 
     def main():
+        """Main function to run the trading bot."""
+        logger.info(f"Starting {BROKER} Trading Bot...")
+        
         if BACKTEST:
-            run_full_backtest()
+            logger.info("Running in backtest mode...")
+            # For backtesting, you'll need to adapt the data format
+            # This is a placeholder - you may need to modify backtest.py for multi-broker
+            import pandas as pd
+            try:
+                df = pd.read_csv('historical_data.csv')
+                results = run_backtest(df)
+                results.to_csv('logs/backtest_results.csv', index=False)
+                logger.info("Backtest completed successfully")
+            except Exception as e:
+                logger.error(f"Backtest failed: {e}")
         else:
+            logger.info(f"Running in live trading mode with {BROKER}...")
             live_trading()
 
     if __name__ == '__main__':
         main()
-except Exception as e:
-    print(f'Error: {e}')
+
+except ImportError as e:
+    print(f"Import error: {e}")
+    print("Please install required packages: pip install -r requirements.txt")
     remove_lock()
-    raise 
+    sys.exit(1)
+except Exception as e:
+    print(f"Unexpected error: {e}")
+    remove_lock()
+    sys.exit(1) 

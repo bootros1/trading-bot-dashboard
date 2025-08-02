@@ -63,6 +63,27 @@ else:
     col3.metric("Profit Factor", f"{profit_factor:.2f}")
     col4.metric("Total Trades", total_trades)
 
+    # --- Advanced Metrics ---
+    avg_win = results_df[results_df['pnl'] > 0]['pnl'].mean() if winning_trades > 0 else 0
+    avg_loss = results_df[results_df['pnl'] < 0]['pnl'].mean() if losing_trades > 0 else 0
+    risk_reward = abs(avg_win / avg_loss) if avg_loss != 0 else float('inf')
+
+    # Max Drawdown
+    balance_curve = results_df['balance'].cummax() - results_df['balance']
+    max_drawdown = balance_curve.max() if not results_df['balance'].empty else 0
+
+    # Sharpe Ratio (using trade PnL as returns, risk-free rate = 0)
+    returns = results_df['pnl']
+    sharpe_ratio = (returns.mean() / returns.std()) * (len(returns) ** 0.5) if returns.std() != 0 else 0
+
+    st.subheader("Advanced Metrics")
+    col5, col6, col7, col8, col9 = st.columns(5)
+    col5.metric("Avg Win", f"${avg_win:,.2f}")
+    col6.metric("Avg Loss", f"${avg_loss:,.2f}")
+    col7.metric("Risk-Reward", f"{risk_reward:.2f}")
+    col8.metric("Max Drawdown", f"${max_drawdown:,.2f}")
+    col9.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
+
     # --- Equity Curve Chart ---
     st.header("Equity Curve")
     fig = px.line(results_df, x=results_df.index, y='balance', title='Account Balance Over Time', labels={'index': 'Trade Number', 'balance': 'Account Balance ($)'})
